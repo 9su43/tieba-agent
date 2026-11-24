@@ -1,0 +1,91 @@
+{
+  "forums": [],
+  "dryRun": true,
+  "pollSeconds": 600,
+  "maxPostsPerDay": 3,
+  "maxRepliesPerHour": 2,
+  "minMinutesBetween": 40,
+  "followThreads": 12,
+  "maxPerRun": 1,
+  "silenceRate": 0.65,
+  "replyDelaySec": [
+    180,
+    900
+  ],
+  "manualDrafts": 6,
+  "manualSilenceRate": 0.35,
+  "activeHours": [
+    "11:00-13:00",
+    "22:00-02:00"
+  ],
+  "timezone": "Asia/Shanghai",
+  "persona": "persona/default.md",
+  "blockedWords": [
+    "身份证",
+    "手机号",
+    "开盒"
+  ],
+  "auto": {
+    "enabled": false,
+    "review": true,
+    "intensity": 2,
+    "pausedUntil": ""
+  },
+  "api": {
+    "profile": ""
+  },
+  "model": {
+    "endpoint": "https://api.deepseek.com/v1",
+    "model": "",
+    "apiKeyEnv": "TIEBA_AGENT_API_KEY",
+    "maxTokens": 300,
+    "thinkingDisabled": false
+  },
+  "vision": {
+    "enabled": false,
+    "profile": "",
+    "model": "",
+    "timeoutSec": 45
+  },
+  "signIn": {
+    "enabled": false,
+    "atHour": 8,
+    "forums": []
+  },
+  "browser": {
+    "port": 3191,
+    "headless": false,
+    "channel": ""
+  },
+  "console": {
+    "port": 3190
+  },
+  "repost": {
+    "enabled": false,
+    "target": "",
+    "forums": [],
+    "intervalMinutes": 30,
+    "perDay": 12,
+    "activeHours": [
+      "11:00-23:00"
+    ],
+    "until": "",
+    "minReply": 30,
+    "minPotential": 4,
+    "maxImages": 9,
+    "maxBodyChars": 1500,
+    "storyFloors": 8,
+    "includeSource": true,
+    "sourceMode": "list",
+    "sourceForums": [],
+    "sourceBatch": 8,
+    "judgeWithModel": true,
+    "judgeProfile": "",
+    "judgeModel": "",
+    "altTarget": "",
+    "altEvery": 0,
+    "altForums": [],
+    "altMinReply": 30,
+    "altMinPotential": 4
+  }
+}

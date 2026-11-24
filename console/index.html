@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>贴吧 bot 控制台</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  th.sortable{cursor:pointer;user-select:none}
+  th.sortable:hover{color:#7fd3ff}
+  th .arrow{font-size:10px;opacity:.85;margin-left:2px}
+  :root{--bg:#121418;--panel:#1a1d24;--line:#282d36;--text:#e7e9ee;--muted:#8891a0;--ok:#3ac06b;--bad:#e05a5a;--warn:#d9a441;--accent:#3d7bd9}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 "Segoe UI",system-ui,sans-serif}
+  header{display:flex;gap:14px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:9;flex-wrap:wrap}
+  h1{font-size:14px;margin:0;letter-spacing:.4px}
+  .pill{border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--muted)}
+  .pill b{color:var(--text)}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--bad)}
+  .dot.on{background:var(--ok)}
+  main{max-width:1180px;margin:0 auto;padding:16px;display:grid;gap:14px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  h2{margin:0 0 10px;font-size:12px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+  button{background:#252a33;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 12px;font:inherit;cursor:pointer}
+  button:hover{background:#2e3540}
+  button.primary{background:#1d4531;border-color:#2b6a48}
+  button.danger{background:#4a2323;border-color:#6b2d2d}
+  button.ghost{background:transparent}
+  button.small{padding:4px 9px;font-size:12px}
+  input,select{background:#0f1116;border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 8px;font:inherit}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .grow{flex:1}
+  .muted{color:var(--muted)}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .seg button{border:0;border-radius:0;padding:6px 14px}
+  .seg button.sel{background:#2b4c7e}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top;font-size:13px}
+  th{color:var(--muted);font-weight:500;font-size:12px}
+  .st{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .st.posted{color:var(--ok);border-color:#2b6a48}
+  .st.pending{color:var(--warn);border-color:#6b5a2c}
+  .st.failed{color:var(--bad);border-color:#6b2d2d}
+  pre{white-space:pre-wrap;word-break:break-word;background:#0f1116;border:1px solid var(--line);border-radius:8px;padding:10px;max-height:320px;overflow:auto;font-size:12px}
+  .tabs{display:flex;gap:6px;margin-bottom:10px}
+  .tabs button.sel{background:#2b4c7e;border-color:#3d6db3}
+  .switch{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+  .track{width:42px;height:22px;border-radius:999px;background:#333a45;position:relative;transition:.15s}
+  .track::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#98a1b0;transition:.15s}
+  .switch.on .track{background:#1d4531}
+  .switch.on .track::after{left:22px;background:#3ac06b}
+</style>
+</head>
+<body>
+<header>
+  <a id="settingsLink" href="/settings">完整设置 / API / 登录</a>
+  <h1>贴吧 bot</h1>
+  <span class="pill"><span id="dotSpeak" class="dot"></span><b id="speakText">—</b></span>
+  <span class="pill">调度：<b id="schedText">—</b></span>
+  <span class="pill">时段内：<b id="inHours">—</b></span>
+  <span class="pill">今天已发 <b id="today">—</b></span>
+  <span class="pill">待审 <b id="pending">—</b></span>
+  <span class="pill">上次运行 <b id="lastRun">—</b></span>
+  <span class="grow"></span>
+  <button class="small" onclick="load()">刷新</button>
+</header>
+<main>
+
+<section>
+  <h2>控制</h2>
+  <div class="row" style="margin-bottom:10px">
+    <label class="switch" id="swSpeak" onclick="toggleSpeak()"><span class="track"></span> 让他说话</label>
+    <label class="switch" id="swReview" onclick="toggleReview()"><span class="track"></span> 审核模式（草稿等你点发）</label>
+    <span class="muted">·</span>
+    <span>强度</span>
+    <div class="seg" id="segInt">
+      <button onclick="setIntensity(1)">保守</button>
+      <button onclick="setIntensity(2)">正常</button>
+      <button onclick="setIntensity(3)">活跃</button>
+    </div>
+  </div>
+  <div class="row">
+    <label class="muted">活跃时段</label>
+    <input id="hours" style="width:280px" placeholder="22:00-02:00,11:00-13:00">
+    <label class="muted">轮询秒</label>
+    <input id="poll" type="number" min="60" max="7200" style="width:90px">
+    <label class="muted">每日上限</label>
+    <input id="cap" type="number" min="1" max="200" style="width:80px" placeholder="跟随强度" title="留空=跟随强度预设；填了就固定用它（最多 200）">
+    <label class="muted">每轮条数</label>
+    <input id="perRun" type="number" min="1" max="10" style="width:70px" title="一轮最多出几条草稿">
+    <label class="muted">吧</label>
+    <input id="forums" style="width:220px">
+    <button class="primary" onclick="saveAll()">保存</button>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <button onclick="pause(1)">暂停 1 小时</button>
+    <button onclick="pause(4)">暂停 4 小时</button>
+    <button class="ghost" onclick="resume()">恢复</button>
+    <span class="muted">·</span>
+    <button onclick="run(true)">跑一轮（dry）</button>
+    <button class="primary" onclick="run(false)">跑一轮（真发）</button>
+    <button onclick="sign()">签到</button>
+    <button onclick="kb()">更新知识库</button>
+  </div>
+  <div class="row" style="margin-top:10px">
+    <span class="muted">API（在原项目里增删，这里只选用）</span>
+    <select id="profile" style="width:260px" onchange="saveProfile()"></select>
+    <span class="muted" id="apiInfo"></span>
+  </div>
+  <pre id="opOut" style="display:none"></pre>
+</section>
+
+<section>
+  <div class="tabs">
+    <button id="tabReview" class="sel" onclick="tab('review')">待审 / 草稿</button>
+    <button id="tabFeed" onclick="tab('feed')">已发动态</button>
+    <button id="tabRepost" onclick="tab('repost')">搬运台</button>
+    <button id="tabKb" onclick="tab('kb')">知识库</button>
+  </div>
+
+  <div id="paneReview">
+    <div class="row" style="margin-bottom:8px">
+      <div class="seg" id="segKind">
+        <button class="sel" onclick="setKind('reply')">回复</button>
+        <button onclick="setKind('thread')">主题帖</button>
+        <button onclick="setKind('all')">全部</button>
+      </div>
+      <span class="muted" id="kindMeta"></span>
+    </div>
+    <table><thead><tr><th style="width:96px">时间</th><th style="width:64px">吧</th><th>帖子</th><th>内容</th><th style="width:64px">状态</th><th style="width:110px">操作</th></tr></thead>
+    <tbody id="draftRows"><tr><td colspan="6" class="muted">加载中…</td></tr></tbody></table>
+  </div>
+
+  <div id="paneFeed" style="display:none">
+    <table><thead><tr><th style="width:120px">时间</th><th style="width:64px">吧</th><th>帖子</th><th>发出去的内容</th></tr></thead>
+    <tbody id="feedRows"><tr><td colspan="4" class="muted">还没有发过</td></tr></tbody></table>
+  </div>
+
+  <div id="paneRepost" style="display:none">
+    <div class="row" style="margin-bottom:10px">
+      <span class="pill"><span id="rpDot" class="dot"></span><span id="rpRun">检查中…</span></span>
+      <span class="pill">今日已发 <b id="rpToday">–</b></span>
+      <span class="pill">下次可发 <b id="rpNext">–</b></span>
+    </div>
+    <div class="row" style="margin-bottom:10px">
+      <label class="muted">间隔（分钟）<input id="rpInterval" type="number" min="1" style="width:84px"></label>
+      <label class="muted">每天上限<input id="rpPerDay" type="number" min="0" style="width:84px"></label>
+      <label class="muted">热帖门槛<input id="rpMinReply" type="number" min="0" style="width:84px"></label>
+      <label class="muted">每条最多图<input id="rpMaxImages" type="number" min="0" max="9" style="width:84px"></label>
+      <label class="muted">潜力门槛<input id="rpMinPotential" type="number" min="1" max="5" style="width:84px" title="1-5 分，≥ 这个分才搬"></label>
+      <label class="muted">活跃时段<input id="rpHours" style="width:240px" placeholder="20:00-02:00,11:00-14:00"></label>
+      <button class="primary" onclick="saveRepost()">保存</button>
+      <button onclick="setRepostEnabled('start')">启动搬运</button><button onclick="setRepostEnabled('stop')">停止搬运</button>
+      <button onclick="runRepostNow()">立即搬一条</button>
+      <span class="muted" id="rpSaved"></span>
+    </div>
+    <div class="row" style="margin-bottom:10px" id="rpSummary">
+      <span class="pill">总浏览 <b id="rpSumView">–</b></span>
+      <span class="pill">总回复 <b id="rpSumReply">–</b></span>
+      <span class="pill">总点赞 <b id="rpSumAgree">–</b></span>
+      <span class="pill">平均浏览/条 <b id="rpAvgView">–</b></span>
+    </div>
+    <div class="row" style="justify-content:space-between;margin:0 0 8px">
+      <span class="muted" id="rpSortInfo">按发出时间排序（新的在前）</span>
+      <button id="rpDesc" onclick="rpSetOrder('desc')">高→低</button>
+      <button id="rpAsc" onclick="rpSetOrder('asc')">低→高</button>
+    </div>
+    <table><thead><tr>
+      <th style="width:96px" class="sortable" data-rsort="at">发出时间<span class="arrow" data-rarrow="at"></span></th>
+      <th style="width:70px">来源吧</th><th>标题</th>
+      <th style="width:66px" class="sortable" data-rsort="view">浏览<span class="arrow" data-rarrow="view"></span></th>
+      <th style="width:62px" class="sortable" data-rsort="reply">回复<span class="arrow" data-rarrow="reply"></span></th>
+      <th style="width:62px" class="sortable" data-rsort="agree">点赞<span class="arrow" data-rarrow="agree"></span></th>
+      <th style="width:48px">图</th>
+    </tr></thead>
+    <tbody id="rpRows"><tr><td colspan="7" class="muted">加载中…</td></tr></tbody></table>
+<div class="row" style="justify-content:space-between;margin-top:10px">
+<span class="muted" id="rpPageInfo">–</span>
+<span class="row" style="gap:8px">
+<button id="rpPrev" onclick="gotoRepostPage(-1)">上一页</button>
+<button id="rpNext" onclick="gotoRepostPage(1)">下一页</button>
+</span>
+</div>
+    <p class="muted" style="margin:10px 0 0">数据是从贴吧实时读的（60 秒缓存）；频率和主控台其他设置一样，保存后会写进 config.json。</p>
+  </div>
+
+  <div id="paneKb" style="display:none">
+    <div class="row" style="margin-bottom:8px"><span class="muted" id="kbMeta"></span></div>
+    <pre id="kbText" style="max-height:520px">加载中…</pre>
+  </div>
+</section>
+</main>
+
+<script>
+const settingsLink=document.getElementById('settingsLink');if(settingsLink)settingsLink.href='/settings'+location.search;
+
+const TOKEN = new URLSearchParams(location.search).get('token') || '';
+let CFG = null;
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot'}[c]));
+async function api(p, m='GET', body) {
+  const r = await fetch(p + (p.includes('?')?'&':'?') + 'token=' + encodeURIComponent(TOKEN),
+    {method:m, headers:{'Content-Type':'application/json'}, body: body?JSON.stringify(body):undefined});
+  if (!r.ok) throw new Error((await r.json().catch(()=>({}))).error || r.status);
+  return r.json();
+}
+async function load() {
+  try {
+    const s = await api('/api/status');
+    CFG = s.config;
+    const a = s.config.auto || {};
+    const speaking = a.enabled !== false && !a.pausedUntil;
+    document.getElementById('speakText').textContent = speaking ? '在说话' : (a.pausedUntil ? '已暂停' : '闭嘴中');
+    document.getElementById('dotSpeak').className = 'dot' + (speaking ? ' on' : '');
+    document.getElementById('schedText').textContent = s.scheduler || '—';
+    document.getElementById('inHours').textContent = s.inHours ? '是' : '否';
+    document.getElementById('today').textContent = s.stats.postedToday;
+    document.getElementById('pending').textContent = s.stats.pending;
+    document.getElementById('lastRun').textContent = s.runtime.lastRunAt || '—';
+    document.getElementById('swSpeak').className = 'switch' + (speaking ? ' on' : '');
+    document.getElementById('swReview').className = 'switch' + (a.review !== false ? ' on' : '');
+    const it = a.intensity || 2;
+    [...document.querySelectorAll('#segInt button')].forEach((b,i)=>b.className = (i+1===it)?'sel':'');
+    document.getElementById('hours').value = (s.config.activeHours||[]).join(',');
+    document.getElementById('poll').value = s.config.pollSeconds ?? 900;
+    document.getElementById('cap').value = (s.config.auto && s.config.auto.maxPostsPerDay) || '';
+    document.getElementById('perRun').value = s.config.maxPerRun ?? 1;
+    document.getElementById('forums').value = (s.config.forums||[]).join(',');
+    const sel = document.getElementById('profile');
+    sel.innerHTML = (s.profiles||[]).map(p=>`<option value="${p.id}" ${p.id===s.api.profile?'selected':''}>${esc(p.name)}（${esc(p.model)}）</option>`).join('');
+    const cur = (s.profiles||[]).find(p=>p.id===s.api.profile);
+    document.getElementById('apiInfo').textContent =
+      `当前：${cur ? cur.name : s.api.source} · ${s.api.model}`;
+    loadDrafts();
+  } catch(e) { document.getElementById('schedText').textContent = '请求失败：' + e.message; }
+}
+let DRAFTS = [];
+let KIND = 'reply';
+const kindOf = r => (r.kind === 'thread' ? 'thread' : 'reply');
+function setKind(k) {
+  KIND = k;
+  ['reply', 'thread', 'all'].forEach((n, i) => {
+    document.querySelectorAll('#segKind button')[i].className = (n === k) ? 'sel' : '';
+  });
+  renderDrafts();
+}
+function renderDrafts() {
+  const all = DRAFTS;
+  const nReply = all.filter(r => kindOf(r) === 'reply').length;
+  const nThread = all.filter(r => kindOf(r) === 'thread').length;
+  const nPendR = all.filter(r => kindOf(r) === 'reply' && r.status === 'pending').length;
+  const nPendT = all.filter(r => kindOf(r) === 'thread' && r.status === 'pending').length;
+  document.getElementById('kindMeta').textContent =
+    `回复 ${nReply}（待审 ${nPendR}） · 主题帖 ${nThread}（待审 ${nPendT}） · 全部 ${all.length}`;
+  const rows = KIND === 'all' ? all : all.filter(r => kindOf(r) === KIND);
+  document.getElementById('draftRows').innerHTML = rows.length ? rows.map(r => {
+    const isThread = kindOf(r) === 'thread';
+    const titleCell = isThread || !r.tid
+      ? `<span>${esc(r.title)}</span>`
+      : `<a class="muted" style="font-size:12px" target="_blank" href="https://tieba.baidu.com/p/${esc(r.tid)}">${esc(r.title)}</a>`;
+    const body = isThread ? (r.reply || r.content || '') : (r.reply || '');
+    return `
+    <tr>
+      <td class="muted">${esc(r.at)}</td><td>${esc(r.forum)}</td>
+      <td>${titleCell}</td>
+      <td>${esc(body)}</td>
+      <td><span class="st ${esc(r.status||'pending')}">${esc(r.status||'pending')}</span>
+        ${r.post_error?`<div class="muted" style="font-size:11px">${esc(r.post_error)}</div>`:''}</td>
+      <td>${r.status==='pending'
+        ? `<button class="primary small" onclick="approve(${r.index})">发</button>
+           <button class="danger small" onclick="discard(${r.index})">丢</button>`
+        : (r.status==='failed'
+          ? `<button class="primary small" onclick="approve(${r.index})">重发</button>
+             <button class="danger small" onclick="discard(${r.index})">丢</button>`
+          : '<span class="muted">—</span>')}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="6" class="muted">没有${KIND === 'thread' ? '主题帖' : (KIND === 'reply' ? '回复' : '')}草稿</td></tr>`;
+}
+async function loadDrafts() {
+  const d = await api('/api/drafts');
+  DRAFTS = (d.rows||[]).filter(r => r.status !== 'discarded');
+  renderDrafts();
+}
+async function loadFeed() {
+  const d = await api('/api/feed');
+  document.getElementById('feedRows').innerHTML = (d.rows||[]).length ? d.rows.map(r=>`
+    <tr><td class="muted">${esc(r.posted_at||r.at)}</td><td>${esc(r.forum)}</td>
+    <td><a class="muted" style="font-size:12px" target="_blank" href="https://tieba.baidu.com/p/${esc(r.tid)}">${esc(r.title)}</a></td>
+    <td>${esc(r.reply)}</td></tr>`).join('') : '<tr><td colspan="4" class="muted">还没有发过</td></tr>';
+}
+async function loadKb() {
+  const d = await api('/api/kb');
+  document.getElementById('kbText').textContent = d.text;
+  document.getElementById('kbMeta').textContent = '上次更新：' + (d.runtime.lastKbAt || '—');
+}
+function tab(name) {
+  for (const t of ['review','feed','repost','kb']) {
+    document.getElementById('pane'+t[0].toUpperCase()+t.slice(1)).style.display = (t===name)?'':'none';
+    document.getElementById('tab'+t[0].toUpperCase()+t.slice(1)).className = (t===name)?'sel':'';
+  }
+  if (name==='feed') loadFeed();
+  if (name==='repost') loadRepost();
+  if (name==='kb') loadKb();
+}
+
+// ── 搬运台 ────────────────────────────────────────────────────────────────
+let rpPage = 1, rpPages = 1, rpRetry = 0, rpRetryTimer = null;
+function gotoRepostPage(delta) {
+  const next = Math.min(rpPages, Math.max(1, rpPage + delta));
+  if (next === rpPage) return;
+  rpPage = next;
+  loadRepost();
+}
+let rpSortKey = 'at', rpSortOrder = 'desc';
+const RP_SORT_NAME = {at:'发出时间', view:'浏览', reply:'回复', agree:'点赞'};
+try {
+  const saved = JSON.parse(localStorage.getItem('rpSort') || 'null');
+  if (saved && saved.key) rpSortKey = saved.key;   // 只记住看哪一列，方向一律回默认「高→低」
+} catch (e) {}
+function rpPaintSort(){
+  document.querySelectorAll('[data-rarrow]').forEach(el => {
+    el.textContent = el.dataset.rarrow === rpSortKey ? (rpSortOrder === 'asc' ? ' ↑' : ' ↓') : '';
+  });
+  const el = document.getElementById('rpSortInfo');
+  if (el) el.textContent = `按${RP_SORT_NAME[rpSortKey] || rpSortKey}排序（${rpSortOrder === 'asc' ? '低→高' : '高→低'}）`;
+  const d = document.getElementById('rpDesc'), a = document.getElementById('rpAsc');
+  if (d) d.style.borderColor = rpSortOrder === 'desc' ? '#3d6db3' : '';
+  if (a) a.style.borderColor = rpSortOrder === 'asc' ? '#3d6db3' : '';
+}
+// 点列头 = 按这列「高→低」；要反着看用右边的按钮，避免点两下莫名其妙变成升序
+function rpSetSort(key){
+  rpSortKey = key;
+  rpSortOrder = 'desc';   // 点列头永远高→低
+  rpPage = 1;
+  try { localStorage.setItem('rpSort', JSON.stringify({key: rpSortKey})); } catch (e) {}
+  loadRepost();
+}
+function rpSetOrder(order){
+  rpSortOrder = order === 'asc' ? 'asc' : 'desc';
+  rpPage = 1;
+  try { localStorage.setItem('rpSort', JSON.stringify({key: rpSortKey})); } catch (e) {}
+  loadRepost();
+}
+document.querySelectorAll('th[data-rsort]').forEach(th => th.onclick = () => rpSetSort(th.dataset.rsort));
+
+async function setRepostEnabled(action) {
+  try { const d=await api('/api/repost/control','POST',{action}); document.getElementById('rpSaved').textContent=d.detail; await loadRepost(); }
+  catch(error) { document.getElementById('rpSaved').textContent=error.message; }
+}
+async function loadRepost() {
+  try {
+    const d = await api('/api/repost?page=' + rpPage + '&sort=' + encodeURIComponent(rpSortKey) + '&order=' + encodeURIComponent(rpSortOrder));
+    const c = d.config || {};
+    document.getElementById('rpInterval').value = c.intervalMinutes ?? 30;
+    document.getElementById('rpPerDay').value = c.perDay ?? 12;
+    document.getElementById('rpMinReply').value = c.minReply ?? 30;
+    document.getElementById('rpMaxImages').value = c.maxImages ?? 3;
+    document.getElementById('rpMinPotential').value = c.minPotential ?? 4;
+    document.getElementById('rpHours').value = (c.activeHours || []).join(',');
+    const st = d.status || {};
+    document.getElementById('rpToday').textContent = st.today ?? '–';
+    document.getElementById('rpNext').textContent = st.nextAt || '–';
+    document.getElementById('rpRun').textContent = st.enabled === false ? '搬运已停止' : (st.running ? '搬运已启动' : '已启用，等待工作进程');
+    document.getElementById('rpDot').className = 'dot' + (st.running ? ' on' : '');
+    rpPages = Number(d.pages) || 1;
+    rpPage = Number(d.page) || 1;
+    const pi = document.getElementById('rpPageInfo');
+    if (pi) pi.textContent = `第 ${rpPage} / ${rpPages} 页 · 共 ${d.total ?? 0} 条`;
+    const prev = document.getElementById('rpPrev'), next = document.getElementById('rpNext');
+    if (prev) prev.disabled = rpPage <= 1;
+    if (next) next.disabled = rpPage >= rpPages;
+    const rows = d.rows || [];
+    // 统计是后台慢慢补的：缺数字就过几秒再拉，最多 6 次
+    if (rows.some(r => r.view == null)) {
+      rpRetry = Math.min(6, rpRetry + 1);
+      clearTimeout(rpRetryTimer);
+      rpRetryTimer = setTimeout(loadRepost, 2500);
+    } else {
+      rpRetry = 0;
+    }
+    const nf = v => (v==null ? '–' : Number(v).toLocaleString('zh-CN'));
+    document.getElementById('rpRows').innerHTML = rows.length ? rows.map(r => `
+      <tr>
+        <td>${esc(r.at || '–')}</td>
+        <td>${esc(r.forum || '–')}</td>
+        <td><a href="${esc(r.url)}" target="_blank" rel="noreferrer">${esc(r.title || '')}</a></td>
+        <td>${nf(r.view)}</td><td>${nf(r.reply)}</td><td>${nf(r.agree)}</td><td>${r.imgs ?? 0}</td>
+      </tr>`).join('') : '<tr><td colspan="7" class="muted">还没有搬运记录</td></tr>';
+    // 合计走后台的全量 totals（不是当前页）；没有 totals 的旧响应再退回按页求和
+    const t = d.totals || null;
+    const sum = k => rows.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+    const totalOf = k => (t ? Number(t[k]) || 0 : sum(k));
+    document.getElementById('rpSumView').textContent = nf(totalOf('view'));
+    document.getElementById('rpSumReply').textContent = nf(totalOf('reply'));
+    document.getElementById('rpSumAgree').textContent = nf(totalOf('agree'));
+    const avgBase = t ? Number(t.covered) || 0 : rows.length;
+    document.getElementById('rpAvgView').textContent = avgBase ? nf(Math.round(totalOf('view') / avgBase)) : '–';
+    rpPaintSort();
+    if (t && t.covered < t.total) {
+      const pi = document.getElementById('rpPageInfo');
+      if (pi) pi.textContent += ` · 统计已补 ${nf(t.covered)} / ${nf(t.total)} 条`;
+    }
+  } catch (e) {
+    document.getElementById('rpRows').innerHTML = `<tr><td colspan="7" class="muted">加载失败：${esc(e.message)}</td></tr>`;
+  }
+}
+async function runRepostNow() {
+  try {
+    const r = await api('/api/repost/run', 'POST', {});
+    document.getElementById('rpSaved').textContent = r.detail || '已通知';
+    setTimeout(loadRepost, 5000);
+  } catch (e) {
+    document.getElementById('rpSaved').textContent = '触发失败：' + e.message;
+  }
+}
+async function saveRepost() {
+  const body = {
+    intervalMinutes: Number(document.getElementById('rpInterval').value) || 1,
+    perDay: Number(document.getElementById('rpPerDay').value) || 0,
+    minReply: Number(document.getElementById('rpMinReply').value) || 0,
+    maxImages: Number(document.getElementById('rpMaxImages').value) || 0,
+    minPotential: Number(document.getElementById('rpMinPotential').value) || 4,
+    activeHours: document.getElementById('rpHours').value.split(/[,，]/).map(s=>s.trim()).filter(Boolean),
+  };
+  try {
+    await api('/api/repost/config', 'POST', body);
+    document.getElementById('rpSaved').textContent = '已保存 ' + new Date().toLocaleTimeString();
+    loadRepost();
+  } catch (e) {
+    document.getElementById('rpSaved').textContent = '保存失败：' + e.message;
+  }
+}
+async function saveProfile() {
+  const pid = document.getElementById('profile').value;
+  if (!pid) return;
+  const el = document.getElementById('apiInfo');
+  el.textContent = '切换中…';
+  try {
+    await api('/api/auto','POST',{profile: pid});
+  } catch (e) {
+    el.textContent = '切换失败：' + e.message;
+    return;
+  }
+  await load();
+}
+async function saveAll() {  await api('/api/auto','POST',{
+    activeHours: document.getElementById('hours').value.split(',').map(s=>s.trim()).filter(Boolean),
+    forums: document.getElementById('forums').value.split(',').map(s=>s.trim()).filter(Boolean),
+    pollSeconds: Number(document.getElementById('poll').value)||900,
+    maxPostsPerDay: Number(document.getElementById('cap').value)||0,
+    maxPerRun: Number(document.getElementById('perRun').value)||1,
+    profile: document.getElementById('profile').value || undefined,
+  });
+  load();
+}
+async function toggleSpeak() { const a = CFG.auto||{}; await api('/api/auto','POST',{enabled: !(a.enabled!==false)}); load(); }
+async function toggleReview() { const a = CFG.auto||{}; await api('/api/auto','POST',{review: !(a.review!==false)}); load(); }
+async function setIntensity(n) { await api('/api/auto','POST',{intensity:n}); load(); }
+async function pause(h) { await api('/api/auto','POST',{pauseHours:h}); load(); }
+async function resume() { await api('/api/auto','POST',{resume:true, pausedUntil:''}); load(); }
+async function approve(i) { if(!confirm('用这个号发出去？')) return; const r = await api('/api/approve','POST',{index:i}); alert(r.ok?'已发布':'失败：'+JSON.stringify(r.detail)); load(); }
+async function discard(i) { await api('/api/discard','POST',{index:i}); load(); }
+async function run(dry) {
+  const el = document.getElementById('opOut'); el.style.display='block'; el.textContent='运行中…';
+  try { const r = await api('/api/run','POST',{dry, manual:true}); el.textContent = (r.out||'') + (r.err?('\n[stderr]\n'+r.err):''); }
+  catch(e) { el.textContent = '失败：'+e.message; }
+  load();
+}
+async function sign() { const el=document.getElementById('opOut'); el.style.display='block'; el.textContent='签到中…';
+  try { const r = await api('/api/sign','POST',{}); el.textContent = (r.out||'')+(r.err?('\n'+r.err):''); } catch(e){ el.textContent='失败：'+e.message; } }
+async function kb() { const el=document.getElementById('opOut'); el.style.display='block'; el.textContent='更新知识库中（可能要一两分钟）…';
+  try { const r = await api('/api/kb-update','POST',{count:12}); el.textContent = (r.out||'')+(r.err?('\n'+r.err):''); } catch(e){ el.textContent='失败：'+e.message; } loadKb(); }
+load();
+setInterval(load, 20000);
+</script>
+</body>
+</html>

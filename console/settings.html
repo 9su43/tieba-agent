@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TiebaAgent 设置</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#121418;color:#e7e9ee;font:15px/1.6 system-ui,sans-serif}header,main{max-width:1180px;margin:auto;padding:22px}header{display:flex;justify-content:space-between;align-items:center}h1{font-size:22px}h2{font-size:18px;margin-top:0}section{background:#1a1d24;border:1px solid #303642;border-radius:12px;padding:22px;margin-bottom:18px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}label{display:flex;flex-direction:column;gap:6px}input,textarea,select,button{font:inherit;color:inherit;background:#11151c;border:1px solid #414a59;border-radius:6px;padding:9px}textarea{min-height:90px;resize:vertical}button{cursor:pointer;background:#243d64;margin:6px 8px 6px 0}a{color:#a3c5ff}.hint,small{color:#a2adbd}#result{position:sticky;bottom:0;padding:12px;background:#182338;white-space:pre-wrap}#persona{width:100%;min-height:240px}code{word-break:break-all}
+</style>
+<header><h1>TiebaAgent · 完整设置</h1><a id="back" href="/">返回控制台</a></header>
+<main>
+<section><h2>首次使用</h2><p class="hint">先配置模型、选择活动吧，再设置账号。自动回复、搬运和签到默认关闭；开启前确认来源、目标、频率、时段和审核模式。</p><p id="health">读取状态中…</p></section>
+<section><h2>模型接口</h2><p class="hint">支持 OpenAI 兼容的 Chat Completions 接口。回复、看图和搬运评分可各选一个已保存的 API。密钥只保存在本机，不回显；留空表示保留原密钥。</p>
+<form id="profileForm"><div class="grid"><label>配置 ID<input id="profileId" required placeholder="例如 primary"></label><label>显示名称<input id="profileName"></label><label>接口地址<input id="endpoint" type="url" required placeholder="https://example.com/v1"></label><label>模型名称<input id="modelName" required></label><label>API Key<input id="apiKey" type="password" autocomplete="new-password"></label></div><button>保存 API</button><button type="button" id="deleteProfile">删除所填 ID 的 API</button></form><div id="profileList"></div></section>
+<section><h2>贴吧账号与专用浏览器</h2><p class="hint">使用本项目独立的浏览器资料目录，不读取你平时浏览器的登录态。可以扫码登录后导入，也可以填写自己的 BDUSS。无图形桌面的服务器可先填写 BDUSS，再启用无头浏览器。平台要求验证码时，需要本人完成验证。</p>
+<button data-browser="start">启动专用浏览器 / 登录</button><button data-browser="import-auth">从专用浏览器导入登录态</button><button data-browser="close">关闭专用浏览器</button>
+<form id="accountForm"><label>BDUSS（只写入本机，保存后不显示）<input type="password" id="bduss" autocomplete="new-password"></label><button>保存登录态</button></form></section>
+<form id="settingsForm"><div id="fields"></div><button type="submit">保存全部设置</button><p class="hint">修改端口后需重启控制台；修改浏览器模式后需关闭再打开专用浏览器。时段按所选时区计算，支持跨午夜。</p></form>
+<section><h2>人格与回复风格</h2><p class="hint">人格只影响表达风格；是否能发送、何时发送及配额由上面的配置决定。配置人格路径后可以直接在这里编辑文本。</p><textarea id="persona"></textarea><button id="savePersona">保存人格</button></section>
+<div id="result" role="status">未保存的改动不会自动覆盖。</div>
+</main>
+<script>
+const TOKEN=new URLSearchParams(location.search).get('token')||sessionStorage.getItem('tiebaToken')||'';
+if(TOKEN)sessionStorage.setItem('tiebaToken',TOKEN);document.getElementById('back').href='/'+(TOKEN?'?token='+encodeURIComponent(TOKEN):'');
+let CFG={},PROFILES=[],TYPES={};
+const $=id=>document.getElementById(id),say=text=>{$('result').textContent=text};
+async function api(path,body){const r=await fetch(path,{method:body===undefined?'GET':'POST',headers:{Authorization:'Bearer '+TOKEN,'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});const data=await r.json();if(!r.ok||data.error)throw Error(data.error||r.status);return data}
+const labels={until:'搬运停止时间（YYYY-MM-DD HH:MM，留空为不定时停止）',channel:'浏览器渠道（空为内置 Chromium，也可填 chrome / msedge）',manualDrafts:'手动每轮草稿数',manualSilenceRate:'手动生成时的跳过概率（0–1）',forums:'回复 / 扫描哪些吧',dryRun:'只生成草稿（不发出）',pollSeconds:'回复扫描间隔（秒）',maxPostsPerDay:'回复每日上限',maxRepliesPerHour:'每小时回复上限',minMinutesBetween:'回复最小间隔（分钟）',followThreads:'每吧跟踪帖子数',maxPerRun:'每轮最多生成条数',silenceRate:'普通帖子跳过概率（0–1）',replyDelaySec:'回复随机延迟范围（秒，两个数）',activeHours:'活跃时段（每行一段）',timezone:'时区',persona:'人格文件（项目内相对路径）',blockedWords:'禁止处理的关键词（每行一个）',auto:'自动回复',enabled:'启用',review:'审核模式（只出待审草稿）',intensity:'回复强度预设（1–3）',pausedUntil:'暂停截止时间（YYYY-MM-DD HH:MM，空为不暂停）',api:'回复 API',profile:'使用哪个 API（空为环境变量配置）',model:'默认模型 / 环境变量配置',endpoint:'接口地址',apiKeyEnv:'API Key 环境变量名称',maxTokens:'回复输出 Token 上限',thinkingDisabled:'发送 DeepSeek thinking=disabled 参数（其他接口一般关闭）',vision:'看图',timeoutSec:'超时秒数',signIn:'签到',atHour:'每日签到小时（0–23）',browser:'专用浏览器',headless:'无头模式（不显示浏览器窗口）',port:'服务端口',console:'控制台',repost:'搬运与源吧索引',target:'搬运目标吧',intervalMinutes:'搬运最小间隔（分钟）',perDay:'搬运每日上限（0 为不限量）',minReply:'源帖最低回复数',minPotential:'最低潜力评分（1–5）',maxImages:'每帖最多图片数',maxBodyChars:'正文字符上限',storyFloors:'楼主后续楼层上限',includeSource:'附带原帖来源',sourceMode:'来源模式（list 指定列表 / sitewide 轮转索引列表）',sourceForums:'轮转索引哪些吧（每行一个）',sourceBatch:'每轮索引吧数量',judgeWithModel:'使用模型评分（关闭则规则评分）',judgeProfile:'评分 API',judgeModel:'评分模型名称（空为 API 默认模型）',altTarget:'轮换目标吧（可留空）',altEvery:'每几轮切到轮换目标（0 为关闭）',altForums:'轮换目标的源吧列表',altMinReply:'轮换源帖最低回复数',altMinPotential:'轮换最低潜力评分'};
+function put(obj,path,value){const keys=path.split('.');let target=obj;for(const key of keys.slice(0,-1))target=target[key]??={};target[keys.at(-1)]=value}
+function field(key,value,path){
+ const label=document.createElement('label');label.textContent=key==='model'&&typeof value==='string'?'模型名称':labels[key]||key;
+ const input=document.createElement(Array.isArray(value)?'textarea':typeof value==='boolean'||key==='profile'||key==='judgeProfile'?'select':'input');
+ input.dataset.path=path;TYPES[path]=Array.isArray(value)?(value.length&&typeof value[0]==='number'?'numbers':'list'):typeof value;
+ if(typeof value==='boolean'){for(const [text,v]of [['关闭','false'],['开启','true']])input.add(new Option(text,v));input.value=String(value)}
+ else if(key==='profile'||key==='judgeProfile'){input.add(new Option('默认 / 环境变量',''));for(const p of PROFILES)input.add(new Option(p.name+' · '+p.model,p.id));input.value=value}
+ else{if(typeof value==='number'){input.type='number';input.step=Number.isInteger(value)?'1':'0.01'}input.value=Array.isArray(value)?value.join('\n'):value}
+ label.append(input);return label;
+}
+function render(){TYPES={};$('fields').replaceChildren();const general=document.createElement('section');general.innerHTML='<h2>回复、频率与活动吧</h2>';const grid=document.createElement('div');grid.className='grid';general.append(grid);$('fields').append(general);
+ for(const [key,value]of Object.entries(CFG)){if(value&&typeof value==='object'&&!Array.isArray(value)){const section=document.createElement('section'),h=document.createElement('h2'),g=document.createElement('div');h.textContent=labels[key]||key;g.className='grid';for(const [k,v]of Object.entries(value))if(typeof v!=='object'||Array.isArray(v))g.append(field(k,v,key+'.'+k));section.append(h,g);$('fields').append(section)}else grid.append(field(key,value,key))}
+}
+async function load(preserveEdits=false){const edits=preserveEdits?new Map([...document.querySelectorAll('[data-path]')].map(el=>[el.dataset.path,el.value])):new Map();const personaEdit=$('persona').value;const d=await api('/api/settings');CFG=d.config;PROFILES=d.profiles;$('health').textContent='登录态：'+(d.accountConfigured?'已配置':'未配置')+'；专用浏览器：'+(d.browser.browserOpen?'已打开':'未打开');$('profileList').replaceChildren();for(const p of PROFILES){const line=document.createElement('p');line.textContent=p.id+' · '+p.name+' · '+p.model+' · '+(p.hasKey?'密钥已保存':'未填密钥');$('profileList').append(line)}render();for(const el of document.querySelectorAll('[data-path]'))if(edits.has(el.dataset.path))el.value=edits.get(el.dataset.path);$('persona').value=preserveEdits?personaEdit:(await api('/api/persona')).text}
+$('settingsForm').onsubmit=async e=>{e.preventDefault();try{const cfg=structuredClone(CFG);for(const input of document.querySelectorAll('[data-path]')){const type=TYPES[input.dataset.path],raw=input.value;let value=raw;if(type==='number'){value=Number(raw);if(!Number.isFinite(value))throw Error('数值无效')}if(type==='boolean')value=raw==='true';if(type==='list')value=raw.split(/\n|,|，/).map(x=>x.trim()).filter(Boolean);if(type==='numbers')value=raw.split(/\n|,|，/).map(x=>Number(x.trim()));put(cfg,input.dataset.path,value)}const r=await api('/api/settings',cfg);CFG=r.config;say('设置已保存。端口变更需重启；浏览器模式变更需关闭再打开浏览器。')}catch(e){say(e.message)}};
+$('profileForm').onsubmit=async e=>{e.preventDefault();try{await api('/api/profiles',{id:$('profileId').value,name:$('profileName').value,endpoint:$('endpoint').value,model:$('modelName').value,apiKey:$('apiKey').value});$('apiKey').value='';await load(true);say('API 已保存，请在回复 / 看图 / 评分设置中选择它。')}catch(e){say(e.message)}};
+$('deleteProfile').onclick=async()=>{try{await api('/api/profiles',{id:$('profileId').value,delete:true});await load(true);say('API 已删除。')}catch(e){say(e.message)}};
+$('accountForm').onsubmit=async e=>{e.preventDefault();try{await api('/api/account',{bduss:$('bduss').value});$('bduss').value='';say('登录态已保存。如浏览器已打开，请关闭后重新打开。')}catch(e){say(e.message)}};
+for(const button of document.querySelectorAll('[data-browser]'))button.onclick=async()=>{button.disabled=true;say('正在处理浏览器…');try{await api('/api/browser/'+button.dataset.browser,{});say('操作完成。登录后请点击导入登录态。')}catch(e){say(e.message)}finally{button.disabled=false}};
+$('savePersona').onclick=async()=>{try{await api('/api/persona',{text:$('persona').value});say('人格已保存。')}catch(e){say(e.message)}};
+load().catch(e=>say('加载失败：'+e.message+'。请使用启动终端给出的带 token 的地址。'));
+</script></html>

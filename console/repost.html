@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>搬家台 · 贴吧搬运</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  th.sortable { cursor: pointer; user-select: none; }
+  th.sortable:hover { color: #7fd3ff; }
+  th .arrow { font-size: 10px; opacity: .85; margin-left: 2px; }
+
+  :root{--bg:#121418;--panel:#1a1d24;--line:#282d36;--text:#e7e9ee;--muted:#8891a0;--ok:#3ac06b;--bad:#e05a5a;--warn:#d9a441;--accent:#6ea8ff}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 "Segoe UI",system-ui,sans-serif}
+  header{display:flex;gap:12px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:9;flex-wrap:wrap}
+  h1{font-size:14px;margin:0;letter-spacing:.4px}
+  a{color:var(--accent);text-decoration:none}
+  /* [2026-11-05] 标题链接在深色底上太暗（尤其点过的变成浏览器默认紫），统一提亮 */
+  a:visited{color:#c9b3ff}
+  a:hover{color:#bcd6ff;text-decoration:underline}
+  td a{color:#8ab4f8}
+  td a:visited{color:#c9b3ff}
+  .pill{border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--muted)}
+  .pill b{color:var(--text)}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;background:var(--bad)}
+  .dot.on{background:var(--ok)}
+  main{max-width:1180px;margin:0 auto;padding:16px;display:grid;gap:14px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+  h2{margin:0 0 10px;font-size:12px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+  button{background:#252a33;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 12px;font:inherit;cursor:pointer}
+  button:hover{background:#2e3540}
+  button.primary{background:#1d4531;border-color:#2b6a48}
+  input{background:#0f1116;border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 8px;font:inherit;width:100px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .muted{color:var(--muted)}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top;font-size:13px}
+  th{color:var(--muted);font-weight:500;font-size:12px}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  .k{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+  .k div{background:#0f1116;border:1px solid var(--line);border-radius:8px;padding:10px}
+  .k b{display:block;font-size:20px;margin-top:2px}
+  .tag{font-size:11px;padding:1px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+  .tag.ok{color:var(--ok);border-color:#2b6a48}
+  .tag.bad{color:var(--bad);border-color:#6b2d2d}
+  .empty{color:var(--muted);padding:18px 4px}
+  tr.fresh{background:#16301f;transition:background 2s}
+  .pill small{color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <a id="settingsLink" href="/settings">完整设置 / API / 登录</a>
+  <h1>搬家台 · 贴吧搬运</h1>
+  <span class="pill"><span id="dot" class="dot"></span><span id="runtext">检查中…</span></span>
+  <span class="pill">今日已发 <b id="today">–</b></span>
+  <span class="pill">下次可发 <b id="next">–</b></span>
+  <span class="pill muted" id="now"></span>
+  <span class="pill muted" id="refreshed">–</span>
+  <span class="grow"></span>
+  <button id="refreshNow" title="立刻刷新">刷新</button>
+  <a href="/">返回主控台</a>
+</header>
+<main>
+  <section>
+    <div class="row"><button class="primary" id="startRepost" onclick="repostControl('start')">启动搬运</button><button id="stopRepost" onclick="repostControl('stop')">停止搬运</button><span class="muted" id="controlResult"></span></div>
+    <h2>频率控制（改完立刻生效到配置文件）</h2>
+    <div class="row">
+      <label>间隔（分钟）<input id="interval" type="number" min="1"></label>
+      <label>每天上限<input id="perDay" type="number" min="0"></label>
+      <label>热帖门槛（回复数）<input id="minReply" type="number" min="0"></label>
+      <label>每条最多图<input id="maxImages" type="number" min="0" max="9"></label>
+      <label>活跃时段<input id="hours" style="width:260px" placeholder="20:00-02:00,11:00-14:00"></label>
+      <button class="primary" id="save">保存</button>
+      <span class="muted" id="saved"></span>
+    </div>
+    <p class="muted" style="margin:10px 0 0">间隔是两条之间最少隔多久；每天上限按成功发出的条数算；活跃时段外不会发。这些也是 <code>config.json</code> 里的 <code>repost</code> 块，两边改都生效。</p>
+  </section>
+
+  <section>
+    <h2>已发的帖子（自动更新贴吧数据）</h2>
+    <div class="k" style="margin-bottom:12px">
+      <div>总浏览<b id="sumView">–</b></div>
+      <div>总回复<b id="sumReply">–</b></div>
+      <div>总点赞<b id="sumAgree">–</b></div>
+      <div>平均浏览/已获取帖子<b id="avgView">–</b></div>
+    </div>
+    <div class="row" style="justify-content:space-between;margin:0 0 8px">
+      <label>排序依据 <select id="sortSelect" onchange="setSort(this.value)" style="background:#252a33;color:var(--text);padding:7px;border:1px solid var(--line);border-radius:6px"><option value="at">发出时间</option><option value="view">浏览数</option><option value="reply">回复数</option><option value="agree">点赞数</option></select></label><span class="muted" id="sortInfo">按发出时间排序（新的在前）</span>
+      <span class="row" style="gap:8px">
+        <button id="orderDesc" onclick="setOrder('desc')">高→低</button>
+        <button id="orderAsc" onclick="setOrder('asc')">低→高</button>
+      </span>
+    </div>
+    <p class="muted" id="coverage" aria-live="polite">正在读取统计覆盖情况…</p>
+    <p class="muted">页面每 5 秒自动刷新，当页帖子数据约每 30 秒读取一次；贴吧延迟或读取失败时保留旧值，并显示状态。</p>
+    <table>
+      <thead><tr>
+        <th style="width:96px" class="sortable" data-sort="at">发出时间<span class="arrow" data-arrow="at"></span></th>
+        <th style="width:86px">来源吧</th><th>标题</th>
+        <th style="width:74px" class="num sortable" data-sort="view">浏览<span class="arrow" data-arrow="view"></span></th>
+        <th style="width:74px" class="num sortable" data-sort="reply">回复<span class="arrow" data-arrow="reply"></span></th>
+        <th style="width:74px" class="num sortable" data-sort="agree">点赞<span class="arrow" data-arrow="agree"></span></th>
+        <th style="width:56px" class="num">图</th><th style="width:74px">状态</th>
+      </tr></thead>
+      <tbody id="rows"><tr><td colspan="8" class="empty">加载中…</td></tr></tbody>
+    </table>
+    <div class="row" style="justify-content:space-between;margin-top:10px">
+      <span class="muted" id="pageInfo">–</span>
+      <span class="row" style="gap:8px">
+        <button id="prevPage" onclick="gotoPage(-1)">上一页</button>
+        <button id="nextPage" onclick="gotoPage(1)">下一页</button>
+      </span>
+    </div>
+  </section>
+</main>
+<script>
+const settingsLink=document.getElementById('settingsLink');if(settingsLink)settingsLink.href='/settings'+location.search;
+
+const TOKEN = new URLSearchParams(location.search).get('token') || '';
+const api = async (p, opt) => {
+  const r = await fetch(p + (p.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(TOKEN), opt);
+  if (!r.ok) throw new Error((await r.json().catch(()=>({}))).error || r.status);
+  return r.json();
+};
+const fmt = (t) => {
+  if (!t) return '–';
+  const d = new Date(t * 1000), n = new Date();
+  const hm = d.toTimeString().slice(0,5);
+  const sameDay = d.toDateString() === n.toDateString();
+  return sameDay ? hm : (d.getMonth()+1) + '/' + d.getDate() + ' ' + hm;
+};
+const nf = (v) => (v==null ? '–' : Number(v).toLocaleString('zh-CN'));
+
+let lastRowKey = '';
+let page = 1;
+let pages = 1;
+let sortKey = 'at';
+let sortOrder = 'desc';
+try {
+  const saved = JSON.parse(localStorage.getItem('rpSort') || 'null');
+  if (saved && ['at','view','reply','agree'].includes(saved.key)) sortKey = saved.key;
+  if (saved && ['asc','desc'].includes(saved.order)) sortOrder = saved.order;
+} catch (e) {}
+let requestVersion = 0, controller = null, loading = false, configDirty = false;
+function saveSort(){try{localStorage.setItem('rpSort',JSON.stringify({key:sortKey,order:sortOrder}));}catch{}}
+function gotoPage(delta) {
+  const next = Math.min(pages, Math.max(1, page + delta));
+  if (next === page) return;
+  page = next;
+  load();
+}
+async function repostControl(action) {
+  const start = document.getElementById('startRepost'), stop = document.getElementById('stopRepost');
+  start.disabled = stop.disabled = true;
+  try { const data = await api('/api/repost/control', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})}); document.getElementById('controlResult').textContent = data.detail; await load(); }
+  catch(error) { document.getElementById('controlResult').textContent=error.message; }
+  finally { start.disabled = stop.disabled = false; }
+}
+async function load(background = false) {
+  if (background && loading) return;
+  const version = ++requestVersion;
+  controller?.abort(); controller = new AbortController(); loading = true;
+  try {
+    const d = await api('/api/repost?page=' + page + '&sort=' + encodeURIComponent(sortKey) + '&order=' + encodeURIComponent(sortOrder), {signal: controller.signal});
+    if (version !== requestVersion) return;
+    const c = d.config || {};
+    // 正在改的输入框不覆盖（以前每 60 秒会把用户输入冲掉）
+    const editing = (el) => el && document.activeElement === el;
+    const setVal = (el, v) => { if (!editing(el) && !configDirty) el.value = v; };
+    setVal(interval, c.intervalMinutes ?? 30);
+    setVal(perDay, c.perDay ?? 12);
+    setVal(minReply, c.minReply ?? 30);
+    setVal(maxImages, c.maxImages ?? 3);
+    setVal(hours, (c.activeHours || []).join(','));
+    document.getElementById('today').textContent = d.status?.today ?? '–';
+    document.getElementById('next').textContent = d.status?.nextAt || '–';
+    dot.className = 'dot' + (d.status?.running ? ' on' : '');
+    document.getElementById('runtext').textContent = d.status?.enabled === false ? (d.status?.operation?.phase === 'publishing' ? '已停止接单，正在等待最后一次发布回执' : '搬运已停止') : (d.status?.running ? '搬运已启动' : '已启用，等待工作进程');
+    document.getElementById('now').textContent = d.status?.now || '';
+    pages = Number(d.pages) || 1;
+    page = Number(d.page) || 1;
+    const pagesEl = document.getElementById('pageInfo');
+    if (pagesEl) pagesEl.textContent = `第 ${page} / ${pages} 页 · 共 ${d.total ?? 0} 条`;
+    const prev = document.getElementById('prevPage'); const next = document.getElementById('nextPage');
+    if (prev) prev.disabled = page <= 1;
+    if (next) next.disabled = page >= pages;
+    const rows = d.rows || [];
+    document.getElementById('refreshed').textContent = '页面更新 ' + new Date().toLocaleTimeString();
+    document.getElementById('rows').innerHTML = rows.length ? rows.map(r => `
+      <tr class="${r.url && lastRowKey && !r.url.includes(lastRowKey) && rows.indexOf(r) === 0 ? 'fresh' : ''}">
+        <td>${escapeHtml(r.at || '–')}</td>
+        <td>${escapeHtml(r.forum || '–')}</td>
+        <td><a href="${/^https:\/\/tieba\.baidu\.com\/p\/\d+$/.test(r.url) ? r.url : '#'}" target="_blank" rel="noreferrer">${escapeHtml(r.title || '')}</a></td>
+        <td class="num">${nf(r.view)}</td>
+        <td class="num">${nf(r.reply)}</td>
+        <td class="num">${nf(r.agree)}</td>
+        <td class="num">${r.imgs ?? 0}</td>
+        <td><span class="tag ${r.ok ? 'ok' : 'bad'}">${r.ok ? '已发布' : escapeHtml(r.stage || '失败')}</span><div class="muted" style="font-size:11px">${({fresh:'数据已更新',stale:'旧数据',pending:'数据读取中',error:'读取失败，稍后重试',missing:'尚未获取'})[r.statsStatus] || '尚未获取'}${r.refreshing ? ' · 更新中' : ''}<br>${r.updatedAt ? new Date(r.updatedAt*1000).toLocaleString('zh-CN') : ''}</div></td>
+      </tr>`).join('') : '<tr><td colspan="8" class="empty">还没有搬运记录</td></tr>';
+    const totals = d.totals || {}, covered = Number(totals.covered) || 0;
+    for (const [id,key] of [['sumView','view'],['sumReply','reply'],['sumAgree','agree']]) document.getElementById(id).textContent = nf(covered ? totals[key] : null);
+    document.getElementById('avgView').textContent = nf(totals.averageView);
+    document.getElementById('coverage').textContent = `全部 ${d.total || 0} 条帖子 · 已获取 ${covered} 条统计 · ${totals.fresh || 0} 条为近一分钟数据。合计包含已获取数据，缺失项不按零计算。`;
+    lastRowKey = rows[0]?.url?.split('/p/')[1] || '';
+    paintSort();
+  } catch (e) {
+    if (version === requestVersion && e.name !== 'AbortError') document.getElementById('refreshed').textContent = '读取失败，保留上次数据；稍后自动重试';
+  } finally {
+    if (version === requestVersion) loading = false;
+  }
+}
+const SORT_NAME = {at:'发出时间', view:'浏览', reply:'回复', agree:'点赞'};
+function paintSort() {
+  document.querySelectorAll('[data-arrow]').forEach((el) => {
+    el.textContent = el.dataset.arrow === sortKey ? (sortOrder === 'asc' ? ' ↑' : ' ↓') : '';
+  });
+  const info = document.getElementById('sortInfo');
+  const direction = sortKey === 'at' ? (sortOrder === 'asc' ? '旧→新' : '新→旧') : (sortOrder === 'asc' ? '低→高' : '高→低');
+  if (info) info.textContent = `按${SORT_NAME[sortKey]}排序（${direction}）`;
+  document.getElementById('sortSelect').value = sortKey;
+  document.getElementById('orderDesc').textContent = sortKey === 'at' ? '倒序 · 新→旧' : '降序 · 高→低';
+  document.getElementById('orderAsc').textContent = sortKey === 'at' ? '顺序 · 旧→新' : '升序 · 低→高';
+  document.querySelectorAll('th.sortable').forEach(el=>el.setAttribute('aria-sort',el.dataset.sort !== sortKey ? 'none' : sortOrder === 'asc' ? 'ascending' : 'descending'));
+  const d = document.getElementById('orderDesc'), a = document.getElementById('orderAsc');
+  if (d) d.style.borderColor = sortOrder === 'desc' ? '#3d6db3' : '';
+  if (a) a.style.borderColor = sortOrder === 'asc' ? '#3d6db3' : '';
+}
+function setSort(key) {
+  if (!['at','view','reply','agree'].includes(key)) return;
+  sortKey = key; page = 1;
+  saveSort();
+  load();
+}
+function setOrder(order) {
+  sortOrder = order === 'asc' ? 'asc' : 'desc'; page = 1;
+  saveSort();
+  load();
+}
+document.querySelectorAll('th.sortable').forEach((th) => { th.onclick = () => th.dataset.sort === sortKey ? setOrder(sortOrder === 'asc' ? 'desc' : 'asc') : setSort(th.dataset.sort); });
+function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+
+['interval','perDay','minReply','maxImages','hours'].forEach(id=>document.getElementById(id).addEventListener('input',()=>{configDirty=true;}));
+
+document.getElementById('save').onclick = async () => {
+  const body = {
+    intervalMinutes: Number(interval.value) || 1,
+    perDay: Number(perDay.value) || 0,
+    minReply: Number(minReply.value) || 0,
+    maxImages: Number(maxImages.value) || 0,
+    activeHours: hours.value.split(/[,，]/).map(s => s.trim()).filter(Boolean),
+  };
+  try {
+    await api('/api/repost/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    configDirty = false;
+    document.getElementById('saved').textContent = '已保存 ' + new Date().toLocaleTimeString();
+    load();
+  } catch (e) {
+    document.getElementById('saved').textContent = '保存失败：' + e.message;
+  }
+};
+load();
+// 5 秒刷一次；后台标签会被浏览器限流，所以切回页面/窗口聚焦时立刻再刷一次
+setInterval(() => { if (document.visibilityState === 'visible') load(true); }, 5000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') load(true); });
+window.addEventListener('focus', () => load(true));
+document.getElementById('refreshNow').onclick = () => load();
+</script>
+</body>
+</html>

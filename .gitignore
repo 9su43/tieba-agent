@@ -1,0 +1,24 @@
+# All runtime data and local credentials stay on the operator's machine.
+state/
+logs/
+config.json
+config-*.json
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+*.bak*
+*.db
+*.sqlite*
+data/*
+!data/README.md
+knowledge/*
+!knowledge/README.md
+dist/
+node_modules/
+.DS_Store
+Thumbs.db
